@@ -10,9 +10,15 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
-    "mongoose": "^8.0.3"
+    "mongoose": "^8.19.1"
   },
-  "keywords": ["discord", "bot", "ticket", "food", "delivery"],
+  "keywords": [
+    "discord",
+    "bot",
+    "ticket",
+    "food",
+    "delivery"
+  ],
   "author": "SohamXYZDev",
   "license": "MIT"
 }
