@@ -4,10 +4,6 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('chef')
         .setDescription('Set your chef status')
-        .addUserOption(option =>
-            option.setName('user')
-                .setDescription('The chef user (leave blank for yourself)')
-                .setRequired(false))
         .addStringOption(option =>
             option.setName('status')
                 .setDescription('Chef status')
@@ -16,7 +12,11 @@ module.exports = {
                     { name: 'Open', value: 'OPEN' },
                     { name: 'Busy', value: 'BUSY' },
                     { name: 'Closed', value: 'CLOSED' }
-                )),
+                ))
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('The chef user (leave blank for yourself)')
+                .setRequired(false)),
     
     async execute(interaction, client, db) {
         const targetUser = interaction.options.getUser('user') || interaction.user;

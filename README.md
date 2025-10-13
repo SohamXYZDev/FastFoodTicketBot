@@ -40,6 +40,7 @@ A comprehensive Discord bot for managing food delivery orders with chef status t
 ### 1. Prerequisites
 
 - Node.js v16 or higher
+- MongoDB database (local or cloud like MongoDB Atlas)
 - Discord Bot Token and Application
 - Discord Server with proper permissions
 
@@ -59,6 +60,9 @@ A comprehensive Discord bot for managing food delivery orders with chef status t
    DISCORD_TOKEN=your_bot_token_here
    CLIENT_ID=your_client_id_here
    GUILD_ID=your_guild_id_here
+
+   # Database Configuration
+   MONGODB_URI=mongodb://localhost:27017/fastfood-ticket-bot
 
    # Channel Configuration
    STATUS_CHANNEL_ID=your_status_channel_id_here
@@ -177,23 +181,24 @@ FastFoodTicketBot/
 
 ## 💾 Database Schema
 
-The bot uses SQLite with two main tables:
+The bot uses MongoDB with Mongoose for data persistence. Two main collections:
 
-### **chefs table**
+### **chefs collection**
 
-- `user_id` - Discord user ID
-- `username` - Discord username
-- `status` - Current chef status (OPEN/BUSY/CLOSED)
-- `debt_amount` - Total debt owed
-- `total_completed` - Number of completed orders
+- `user_id` - Discord user ID (String, unique)
+- `username` - Discord username (String)
+- `status` - Current chef status (Enum: OPEN/BUSY/CLOSED)
+- `debt_amount` - Total debt owed (Number, default: 0)
+- `total_completed` - Number of completed orders (Number, default: 0)
+- `created_at` - Account creation timestamp (Date)
 
-### **orders table**
+### **orders collection**
 
-- `chef_id` - Chef who completed the order
-- `customer_id` - Customer who placed the order
-- `order_type` - Platform (doordash/ubereats)
-- `amount` - Order payment amount
-- `completed_at` - Completion timestamp
+- `chef_id` - Chef who completed the order (String)
+- `customer_id` - Customer who placed the order (String)
+- `order_type` - Platform (Enum: doordash/ubereats)
+- `amount` - Order payment amount (Number)
+- `completed_at` - Completion timestamp (Date)
 
 ## 🔧 Configuration Options
 
