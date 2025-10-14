@@ -20,44 +20,26 @@ module.exports = {
         
         // Create the ticket embed
         const embed = new EmbedBuilder()
-            .setTitle('🎫 Create a Delivery Ticket')
-            .setDescription('Click the button below to create a ticket for your delivery order. Our chefs will assist you!')
-            .setColor('#00ADEF')
-            .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
-            .addFields(
-                { 
-                    name: '🚪 DoorDash Orders', 
-                    value: `• $${process.env.DOORDASH_AMOUNT} per order\n• Red button below`, 
-                    inline: true 
-                },
-                { 
-                    name: '🍔 UberEats Orders', 
-                    value: `• $${process.env.UBEREATS_AMOUNT} per order\n• Green button below`, 
-                    inline: true 
-                },
-                { 
-                    name: '📋 Instructions', 
-                    value: '1. Choose your delivery platform\n2. Wait for chef assignment\n3. Provide your order details\n4. Complete your order', 
-                    inline: false 
-                }
-            )
-            .setFooter({ text: '🍕 FastFood Delivery Service • Quick & Reliable' })
-            .setTimestamp();
+            .setTitle('Start Order')
+            .setDescription('**How to Order**\nClick the button below and complete the form to place your order!\n\nPayment Methods Accepted:\n-# PayPal · Venmo · Apple Pay · Zelle · Cash App · Crypto')
+            .setColor('#005EFF')
+            .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png');
 
         // Create buttons
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('create_ticket_doordash')
-                    .setLabel('🚪 DoorDash Ticket')
+                    .setLabel('🚪 DoorDash')
                     .setStyle(ButtonStyle.Danger),
                 new ButtonBuilder()
                     .setCustomId('create_ticket_ubereats')
-                    .setLabel('🍔 UberEats Ticket')
+                    .setLabel('🍔 UberEats')
                     .setStyle(ButtonStyle.Success)
             );
 
         await interaction.reply({ 
+            content: '@everyone',
             embeds: [embed], 
             components: [row]
         });
