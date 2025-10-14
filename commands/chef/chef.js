@@ -97,6 +97,24 @@ module.exports = {
                 }
             }
             
+            // Rename status channel based on chef availability
+            try {
+                const guild = interaction.guild;
+                const statusChannel = guild.channels.cache.get(process.env.STATUS_CHANNEL_ID);
+                if (statusChannel) {
+                    const allChefs = await db.getAllChefs();
+                    const openChefs = allChefs.filter(chef => chef.status === 'OPEN');
+                    
+                    if (openChefs.length > 0) {
+                        await statusChannel.setName('🟢-status');
+                    } else {
+                        await statusChannel.setName('🔴-status');
+                    }
+                }
+            } catch (error) {
+                console.log('Could not rename status channel:', error.message);
+            }
+            
             // Update the chef status embed
             await client.utils.updateChefStatusEmbed();
             

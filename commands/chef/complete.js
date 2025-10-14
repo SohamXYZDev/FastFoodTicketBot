@@ -3,18 +3,9 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('complete')
-        .setDescription('Mark an order as complete and log payment')
-        .addStringOption(option =>
-            option.setName('ordertype')
-                .setDescription('Type of order completed')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'DoorDash', value: 'doordash' },
-                    { name: 'UberEats', value: 'ubereats' }
-                )),
+        .setDescription('Mark an order as complete and log payment'),
     
     async execute(interaction, client, db) {
-        const orderType = interaction.options.getString('ordertype');
         const channelId = interaction.channel.id;
         
         // Check if this is a ticket channel
@@ -47,19 +38,17 @@ module.exports = {
         }
         
         try {
-            // Get payment amounts from environment
-            const amount = orderType === 'doordash' 
-                ? parseFloat(process.env.DOORDASH_AMOUNT) 
-                : parseFloat(process.env.UBEREATS_AMOUNT);
+            // Get payment amount from environment
+            const amount = parseFloat(process.env.UBEREATS_AMOUNT) || 4.50;
             
             // Add debt to chef
-            await db.addDebt(ticket.chefId, amount, orderType, ticket.userId);
+            await db.addDebt(ticket.chefId, amount, 'order', ticket.userId);
             
             // Mark ticket as completed
             ticket.completed = true;
             
             // Rename the channel to show completion
-            const newName = `completed-${orderType}-${interaction.guild.members.cache.get(ticket.userId)?.user.username || 'unknown'}`;
+            const newName = `completed-${interaction.guild.members.cache.get(ticket.userId)?.user.username || 'unknown'}`;
             await interaction.channel.setName(newName);
             
             // Create completion embed
@@ -67,9 +56,8 @@ module.exports = {
                 .setTitle('✅ Order Completed!')
                 .setDescription(`Order has been successfully completed by <@${ticket.chefId}>`)
                 .setColor('#00ADEF')
-                .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
+                .setThumbnail('https://i.ibb.co/fYkrgwKy/Chat-GPT-Image-Oct-13-2025-12-09-59-PM.png')
                 .addFields(
-                    { name: '📦 Order Type', value: orderType === 'doordash' ? 'DoorDash' : 'UberEats', inline: true },
                     { name: '💰 Amount', value: `$${amount.toFixed(2)}`, inline: true },
                     { name: '👨‍🍳 Chef', value: `<@${ticket.chefId}>`, inline: true },
                     { name: '🛍️ Customer', value: `<@${ticket.userId}>`, inline: true },

@@ -62,8 +62,7 @@ client.utils = {
             .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
             .setTimestamp();
 
-        let uberEatsChefs = '';
-        let doorDashChefs = '';
+        let chefList = '';
         
         const statusEmojis = {
             'OPEN': '🟢',
@@ -74,17 +73,11 @@ client.utils = {
         chefs.forEach(chef => {
             const status = chef.status || 'CLOSED';
             const emoji = statusEmojis[status];
-            const chefLine = `${emoji} <@${chef.user_id}> - ${status}\n`;
-            
-            // For now, we'll show all chefs in both sections
-            // You can modify this logic based on your needs
-            uberEatsChefs += chefLine;
-            doorDashChefs += chefLine;
+            chefList += `${emoji} <@${chef.user_id}> - ${status}\n`;
         });
 
         embed.addFields(
-            { name: '🍔 UberEats Chefs', value: uberEatsChefs || 'No chefs available', inline: true },
-            { name: '🚪 DoorDash Chefs', value: doorDashChefs || 'No chefs available', inline: true }
+            { name: '👨‍� Available Chefs', value: chefList || 'No chefs registered', inline: false }
         );
 
         embed.addFields({
@@ -155,8 +148,8 @@ client.on('interactionCreate', async interaction => {
         }
     } else if (interaction.isButton()) {
         // Handle button interactions
-        if (interaction.customId === 'create_ticket_doordash' || interaction.customId === 'create_ticket_ubereats') {
-            const orderType = interaction.customId === 'create_ticket_doordash' ? 'DoorDash' : 'UberEats';
+        if (interaction.customId === 'create_ticket_ubereats') {
+            const orderType = 'Order';
             
             // Check if user already has an active ticket
             const existingTicket = Array.from(client.activeTickets.values()).find(ticket => ticket.userId === interaction.user.id);
@@ -175,7 +168,7 @@ client.on('interactionCreate', async interaction => {
             const category = guild.channels.cache.get(process.env.TICKET_CATEGORY_ID);
             
             const ticketChannel = await guild.channels.create({
-                name: `${orderType.toLowerCase()}-${interaction.user.username}`,
+                name: `ticket-${interaction.user.username}`,
                 type: 0, // Text channel
                 parent: category,
                 permissionOverwrites: [
@@ -205,12 +198,11 @@ client.on('interactionCreate', async interaction => {
 
             // Create ticket embed
             const ticketEmbed = new EmbedBuilder()
-                .setTitle(`🎫 New ${orderType} Order`)
+                .setTitle(`🎫 New Order Ticket`)
                 .setDescription(`Welcome <@${interaction.user.id}>! Your chef <@${availableChef.user_id}> will assist you shortly.`)
                 .setColor('#00ADEF')
-                .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
+                .setThumbnail('https://i.ibb.co/fYkrgwKy/Chat-GPT-Image-Oct-13-2025-12-09-59-PM.png')
                 .addFields(
-                    { name: '📦 Order Type', value: orderType, inline: true },
                     { name: '👨‍🍳 Assigned Chef', value: `<@${availableChef.user_id}>`, inline: true },
                     { name: '⏰ Created', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
                 )
