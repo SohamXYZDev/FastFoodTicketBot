@@ -29,12 +29,8 @@ module.exports = {
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('create_ticket_doordash')
-                    .setLabel('🚪 DoorDash')
-                    .setStyle(ButtonStyle.Danger),
-                new ButtonBuilder()
                     .setCustomId('create_ticket_ubereats')
-                    .setLabel('🍔 UberEats')
+                    .setLabel('🍔 Begin')
                     .setStyle(ButtonStyle.Success)
             );
 
