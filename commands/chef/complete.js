@@ -66,7 +66,8 @@ module.exports = {
             const embed = new EmbedBuilder()
                 .setTitle('✅ Order Completed!')
                 .setDescription(`Order has been successfully completed by <@${ticket.chefId}>`)
-                .setColor('#00FF00')
+                .setColor('#00ADEF')
+                .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                 .addFields(
                     { name: '📦 Order Type', value: orderType === 'doordash' ? 'DoorDash' : 'UberEats', inline: true },
                     { name: '💰 Amount', value: `$${amount.toFixed(2)}`, inline: true },
@@ -86,7 +87,8 @@ module.exports = {
             const debtEmbed = new EmbedBuilder()
                 .setTitle('💳 Debt Updated')
                 .setDescription(`Your current debt: **$${chefData.debt_amount.toFixed(2)}**\nTotal orders completed: **${chefData.total_completed}**`)
-                .setColor('#FFA500')
+                .setColor('#00ADEF')
+                .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                 .setTimestamp();
             
             try {

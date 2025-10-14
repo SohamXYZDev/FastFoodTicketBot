@@ -14,8 +14,8 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle('🍕 FastFood Ticket Bot - Help')
             .setDescription('Here are all the available commands:')
-            .setColor('#FF6B35')
-            .setThumbnail(client.user.displayAvatarURL())
+            .setColor('#00ADEF')
+            .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
             .setTimestamp();
         
         // Customer Commands

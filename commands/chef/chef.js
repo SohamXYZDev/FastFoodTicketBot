@@ -65,7 +65,8 @@ module.exports = {
                         const embed = new EmbedBuilder()
                             .setTitle('🔒 Ticket Temporarily Hidden')
                             .setDescription('Your assigned chef is currently offline. This ticket will reappear when they come back online.')
-                            .setColor('#FF0000')
+                            .setColor('#00ADEF')
+                            .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                             .setTimestamp();
                             
                         await channel.send({ embeds: [embed] });
@@ -87,7 +88,8 @@ module.exports = {
                         const embed = new EmbedBuilder()
                             .setTitle('✅ Ticket Restored')
                             .setDescription('Your chef is back online! You can continue with your order.')
-                            .setColor('#00FF00')
+                            .setColor('#00ADEF')
+                            .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                             .setTimestamp();
                             
                         await channel.send({ embeds: [embed] });
@@ -106,8 +108,9 @@ module.exports = {
             
             const embed = new EmbedBuilder()
                 .setTitle('Chef Status Updated')
-                .setDescription(`${statusEmojis[status]} ${targetUser}'s status has been set to **${status}**`)
-                .setColor(status === 'OPEN' ? '#00FF00' : status === 'BUSY' ? '#FFFF00' : '#FF0000')
+                .setDescription(`${statusEmojis[status]} ${targetUser.username}'s status has been set to **${status}**`)
+                .setColor('#00ADEF')
+                .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                 .setTimestamp();
             
             await interaction.reply({ embeds: [embed] });

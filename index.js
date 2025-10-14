@@ -58,7 +58,8 @@ client.utils = {
         const embed = new EmbedBuilder()
             .setTitle('🍳 Chef Status Dashboard')
             .setDescription('Current status of all delivery chefs')
-            .setColor('#FF6B35')
+            .setColor('#00ADEF')
+            .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
             .setTimestamp();
 
         let uberEatsChefs = '';
@@ -206,7 +207,8 @@ client.on('interactionCreate', async interaction => {
             const ticketEmbed = new EmbedBuilder()
                 .setTitle(`🎫 New ${orderType} Order`)
                 .setDescription(`Welcome <@${interaction.user.id}>! Your chef <@${availableChef.user_id}> will assist you shortly.`)
-                .setColor(orderType === 'DoorDash' ? '#FF3333' : '#00B900')
+                .setColor('#00ADEF')
+                .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                 .addFields(
                     { name: '📦 Order Type', value: orderType, inline: true },
                     { name: '👨‍🍳 Assigned Chef', value: `<@${availableChef.user_id}>`, inline: true },

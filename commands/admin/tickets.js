@@ -30,7 +30,8 @@ module.exports = {
             
             const embed = new EmbedBuilder()
                 .setTitle(`🎫 Active Tickets (${activeTickets.length})`)
-                .setColor('#0099FF')
+                .setColor('#00ADEF')
+                .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                 .setTimestamp();
             
             let ticketList = '';

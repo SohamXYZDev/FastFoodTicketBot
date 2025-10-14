@@ -54,8 +54,8 @@ module.exports = {
                 
                 const embed = new EmbedBuilder()
                     .setTitle(`💳 Debt Information - ${targetUser.username}`)
-                    .setThumbnail(targetUser.displayAvatarURL())
-                    .setColor('#FFA500')
+                    .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
+                    .setColor('#00ADEF')
                     .addFields(
                         { name: '💰 Current Debt', value: `$${chefData.debt_amount.toFixed(2)}`, inline: true },
                         { name: '📦 Total Orders', value: `${chefData.total_completed}`, inline: true },
@@ -95,7 +95,8 @@ module.exports = {
                 
                 const embed = new EmbedBuilder()
                     .setTitle('💳 All Chef Debts')
-                    .setColor('#FF0000')
+                    .setColor('#00ADEF')
+                    .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                     .setTimestamp();
                 
                 let debtList = '';
@@ -156,7 +157,8 @@ module.exports = {
                 const embed = new EmbedBuilder()
                     .setTitle('✅ Debt Cleared')
                     .setDescription(`Successfully cleared **$${clearedAmount.toFixed(2)}** debt for ${targetUser}`)
-                    .setColor('#00FF00')
+                    .setColor('#00ADEF')
+                    .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                     .setTimestamp();
                 
                 await interaction.reply({ embeds: [embed] });
@@ -167,7 +169,8 @@ module.exports = {
                     const notifyEmbed = new EmbedBuilder()
                         .setTitle('💳 Debt Cleared!')
                         .setDescription(`Your debt of $${clearedAmount.toFixed(2)} has been cleared by an admin.`)
-                        .setColor('#00FF00')
+                        .setColor('#00ADEF')
+                        .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
                         .setTimestamp();
                     
                     await chef.send({ embeds: [notifyEmbed] });

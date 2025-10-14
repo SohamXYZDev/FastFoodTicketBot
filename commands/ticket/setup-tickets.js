@@ -22,7 +22,8 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle('🎫 Create a Delivery Ticket')
             .setDescription('Click the button below to create a ticket for your delivery order. Our chefs will assist you!')
-            .setColor('#FF6B35')
+            .setColor('#00ADEF')
+            .setThumbnail('https://media.discordapp.net/attachments/1424068610355363963/1427324660810256474/ChatGPT_Image_Oct_13_2025_03_11_27_AM.png')
             .addFields(
                 { 
                     name: '🚪 DoorDash Orders', 
