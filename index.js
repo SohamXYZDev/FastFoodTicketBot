@@ -138,8 +138,8 @@ client.on('messageCreate', async message => {
         if (client.activeTickets.has(channelId)) {
             const ticket = client.activeTickets.get(channelId);
             
-            // Check if sender is the assigned chef
-            if (ticket.chefId === message.author.id && !ticket.completed) {
+            // Check if sender is the assigned chef and ticket is claimed
+            if (ticket.chefId === message.author.id && ticket.claimed && !ticket.completed) {
                 try {
                     // Get payment amount from environment
                     const amount = parseFloat(process.env.UBEREATS_AMOUNT) || 4.50;
@@ -241,11 +241,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: 'You already have an active ticket!', ephemeral: true });
             }
 
-            // Check for available chefs
-            const availableChef = await client.utils.getAvailableChef('Order');
-            if (!availableChef) {
-                return interaction.reply({ content: 'No chefs are currently available. Please try again later.', ephemeral: true });
-            }
+            // No need to check for available chefs since orders will be claimed later
 
             // Show modal form for order details
             const modal = new ModalBuilder()
@@ -281,6 +277,97 @@ client.on('interactionCreate', async interaction => {
             modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
 
             await interaction.showModal(modal);
+        } else if (interaction.customId === 'claim_order') {
+            // Check if this is a ticket channel
+            if (!client.activeTickets.has(interaction.channel.id)) {
+                return interaction.reply({ content: 'This is not an active ticket channel!', ephemeral: true });
+            }
+
+            const ticket = client.activeTickets.get(interaction.channel.id);
+            
+            // Check if order is already claimed
+            if (ticket.claimed) {
+                return interaction.reply({ content: 'This order has already been claimed!', ephemeral: true });
+            }
+
+            // Check if user is a chef
+            const chefRole = interaction.guild.roles.cache.get(process.env.CHEF_ROLE_ID);
+            if (!chefRole || !interaction.member.roles.cache.has(chefRole.id)) {
+                return interaction.reply({ content: 'Only chefs can claim orders!', ephemeral: true });
+            }
+
+            // Check chef availability
+            const chefData = await db.getChef(interaction.user.id);
+            if (!chefData || chefData.status === 'OFFLINE') {
+                return interaction.reply({ content: 'You must be available to claim orders! Use `/chef status available` first.', ephemeral: true });
+            }
+
+            // Move channel to regular ticket category and assign chef
+            const ticketCategory = interaction.guild.channels.cache.get(process.env.TICKET_CATEGORY_ID);
+            
+            await interaction.channel.edit({
+                name: `ticket-${interaction.guild.members.cache.get(ticket.userId).user.username}`,
+                parent: ticketCategory,
+                permissionOverwrites: [
+                    {
+                        id: interaction.guild.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: ticket.userId,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    },
+                    {
+                        id: interaction.user.id,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    },
+                ]
+            });
+
+            // Update ticket data
+            ticket.chefId = interaction.user.id;
+            ticket.claimed = true;
+            ticket.claimedAt = new Date();
+            client.activeTickets.set(interaction.channel.id, ticket);
+
+            // Create new embed showing claimed status
+            const claimedEmbed = new EmbedBuilder()
+                .setTitle(`🎫 Order Claimed!`)
+                .setDescription(`<@${interaction.user.id}> has claimed this order for <@${ticket.userId}>!`)
+                .setColor('#00ADEF') // Blue color for claimed
+                .setThumbnail('https://i.ibb.co/fYkrgwKy/Chat-GPT-Image-Oct-13-2025-12-09-59-PM.png')
+                .addFields(
+                    { name: '👨‍🍳 Assigned Chef', value: `<@${interaction.user.id}>`, inline: true },
+                    { name: '💰 Total Amount', value: ticket.total, inline: true },
+                    { name: '⏰ Claimed', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+                    { name: '🔗 Group Order Link', value: ticket.groupOrderLink, inline: false },
+                    { name: '📝 Special Instructions', value: ticket.specialInstructions, inline: false }
+                )
+                .setFooter({ text: 'Send a UberEats link when order is complete!' });
+
+            // Complete order button for the assigned chef
+            const completeButton = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('complete_order')
+                        .setLabel('Complete Order')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('✅')
+                );
+
+            await interaction.update({
+                content: `<@${ticket.userId}> <@${interaction.user.id}>`,
+                embeds: [claimedEmbed],
+                components: [completeButton]
+            });
+
+            // Update chef status to busy if they have multiple tickets
+            const chefTickets = Array.from(client.activeTickets.values()).filter(t => t.chefId === interaction.user.id && t.claimed);
+            if (chefTickets.length > 1) {
+                await db.updateChefStatus(interaction.user.id, 'BUSY');
+                await client.utils.updateChefStatusEmbed();
+            }
+
         } else if (interaction.customId === 'complete_order') {
             // Check if this is a ticket channel
             if (!client.activeTickets.has(interaction.channel.id)) {
@@ -326,14 +413,14 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: 'No chefs are currently available. Please try again later.', ephemeral: true });
             }
 
-            // Create ticket channel
+            // Create ticket channel in unclaimed category
             const guild = interaction.guild;
-            const category = guild.channels.cache.get(process.env.TICKET_CATEGORY_ID);
+            const unclaimedCategory = guild.channels.cache.get('1428055979676664058');
             
             const ticketChannel = await guild.channels.create({
-                name: `ticket-${interaction.user.username}`,
+                name: `unclaimed-${interaction.user.username}`,
                 type: 0, // Text channel
-                parent: category,
+                parent: unclaimedCategory,
                 permissionOverwrites: [
                     {
                         id: guild.id,
@@ -343,39 +430,41 @@ client.on('interactionCreate', async interaction => {
                         id: interaction.user.id,
                         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
                     },
+                    // Allow chefs to view unclaimed tickets
                     {
-                        id: availableChef.user_id,
+                        id: process.env.CHEF_ROLE_ID,
                         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
                     },
                 ],
             });
 
-            // Store ticket info with order details
+            // Store ticket info with order details (unclaimed initially)
             client.activeTickets.set(ticketChannel.id, {
                 userId: interaction.user.id,
-                chefId: availableChef.user_id,
+                chefId: null, // No chef assigned yet
                 orderType: 'Order',
                 groupOrderLink: groupOrderLink,
                 total: total,
                 specialInstructions: specialInstructions,
                 createdAt: new Date(),
+                claimed: false,
                 completed: false
             });
 
             // Create ticket embed
             const ticketEmbed = new EmbedBuilder()
-                .setTitle(`🎫 New Order Ticket`)
-                .setDescription(`Welcome <@${interaction.user.id}>! Your chef <@${availableChef.user_id}> will assist you shortly.`)
-                .setColor('#00ADEF')
+                .setTitle(`🎫 Unclaimed Order`)
+                .setDescription(`New order from <@${interaction.user.id}> waiting to be claimed by a chef!`)
+                .setColor('#FF6B35') // Orange color for unclaimed
                 .setThumbnail('https://i.ibb.co/fYkrgwKy/Chat-GPT-Image-Oct-13-2025-12-09-59-PM.png')
                 .addFields(
-                    { name: '👨‍🍳 Assigned Chef', value: `<@${availableChef.user_id}>`, inline: true },
+                    { name: '👨‍🍳 Status', value: '🔍 **Waiting for Chef**', inline: true },
                     { name: '💰 Total Amount', value: total, inline: true },
                     { name: '⏰ Created', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
                     { name: '🔗 Group Order Link', value: groupOrderLink, inline: false },
                     { name: '📝 Special Instructions', value: specialInstructions, inline: false }
                 )
-                .setFooter({ text: 'Use /complete when the order is finished' });
+                .setFooter({ text: 'Chefs: Click "Claim Order" to take this order!' });
 
             // High demand warning
             let content = '';
@@ -384,25 +473,25 @@ client.on('interactionCreate', async interaction => {
             }
 
             await ticketChannel.send({ 
-                content: `${content}\n<@${interaction.user.id}> <@${availableChef.user_id}>`, 
+                content: `${content}\n<@${interaction.user.id}> 👨‍🍳 **Chefs, claim this order!**`, 
                 embeds: [ticketEmbed] 
             });
 
-            // Complete order button
-            const completeButton = new ActionRowBuilder()
+            // Claim order button
+            const claimButton = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
-                        .setCustomId('complete_order')
-                        .setLabel('Complete Order')
-                        .setStyle(ButtonStyle.Success)
-                        .setEmoji('✅')
+                        .setCustomId('claim_order')
+                        .setLabel('Claim Order')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('🙋‍♂️')
                 );
 
             await ticketChannel.send({
                 embeds: [new EmbedBuilder()
-                    .setDescription('When the order is complete, click the button below or send a UberEats link.')
-                    .setColor('#00ADEF')],
-                components: [completeButton]
+                    .setDescription('🍳 **Chefs**: Click below to claim this order and move it to your workspace!')
+                    .setColor('#FF6B35')],
+                components: [claimButton]
             });
 
             // Assign customer role to user
@@ -418,12 +507,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.reply({ content: `Ticket created! Please head to ${ticketChannel}`, ephemeral: true });
 
-            // Update chef status to busy only if they have multiple tickets
-            const chefTickets = Array.from(client.activeTickets.values()).filter(ticket => ticket.chefId === availableChef.user_id);
-            if (chefTickets.length > 1) {
-                await db.updateChefStatus(availableChef.user_id, 'BUSY');
-                await client.utils.updateChefStatusEmbed();
-            }
+            // No need to update chef status since order is unclaimed initially
         }
     }
 });
