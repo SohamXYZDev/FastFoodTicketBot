@@ -154,6 +154,16 @@ class Database {
         }
     }
 
+    async getChef(userId) {
+        try {
+            const chef = await this.Chef.findOne({ user_id: userId });
+            return chef;
+        } catch (error) {
+            console.error('Error getting chef:', error);
+            throw error;
+        }
+    }
+
     async getAllChefs() {
         try {
             const chefs = await this.Chef.find({}).sort({ username: 1 });

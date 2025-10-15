@@ -112,6 +112,35 @@ client.utils = {
 
     checkHighDemand: () => {
         return client.activeTickets.size >= 2;
+    },
+
+    completeOrder: async (channelId, chefId, customerId, total) => {
+        try {
+            // Add debt to chef
+            const amount = parseFloat(total.replace(/[^0-9.]/g, '')) || 4.50;
+            await db.addDebt(chefId, amount, 'ubereats', customerId);
+            
+            // Remove from active tickets
+            if (client.activeTickets.has(channelId)) {
+                const ticket = client.activeTickets.get(channelId);
+                ticket.completed = true;
+                
+                // Remove from active tickets
+                client.activeTickets.delete(channelId);
+                
+                // Check if chef should be set back to OPEN
+                const chefTickets = Array.from(client.activeTickets.values()).filter(t => t.chefId === chefId);
+                if (chefTickets.length === 0) {
+                    await db.updateChefStatus(chefId, 'OPEN');
+                    await client.utils.updateChefStatusEmbed();
+                }
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error completing order:', error);
+            throw error;
+        }
     }
 };
 
@@ -145,7 +174,7 @@ client.on('messageCreate', async message => {
                     const amount = parseFloat(process.env.UBEREATS_AMOUNT) || 4.50;
                     
                     // Add debt to chef
-                    await db.addDebt(ticket.chefId, amount, 'order', ticket.userId);
+                    await db.addDebt(ticket.chefId, amount, 'ubereats', ticket.userId);
                     
                     // Mark ticket as completed
                     ticket.completed = true;
@@ -384,13 +413,18 @@ client.on('interactionCreate', async interaction => {
             // Mark ticket as completed
             await client.utils.completeOrder(interaction.channel.id, interaction.user.id, ticket.userId, ticket.total);
             
-            // Delete the channel after a short delay
-            await interaction.reply({ content: 'Order marked as complete! This channel will be deleted in 5 seconds.' });
+            // Hide the channel from customers after a short delay
+            await interaction.reply({ content: 'Order marked as complete! This channel will be hidden from customers in 5 seconds.' });
             setTimeout(async () => {
                 try {
-                    await interaction.channel.delete();
+                    // Hide channel from customers and general public
+                    await interaction.channel.permissionOverwrites.edit(interaction.guild.id, {
+                        ViewChannel: false
+                    });
+                    // Keep it visible for the chef for record keeping
+                    await interaction.channel.setName(`completed-${interaction.guild.members.cache.get(ticket.userId).user.username}`);
                 } catch (error) {
-                    console.error('Error deleting channel:', error);
+                    console.error('Error hiding channel:', error);
                 }
             }, 5000);
         }
@@ -407,11 +441,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: 'You already have an active ticket!', ephemeral: true });
             }
 
-            // Check for available chefs again
-            const availableChef = await client.utils.getAvailableChef('Order');
-            if (!availableChef) {
-                return interaction.reply({ content: 'No chefs are currently available. Please try again later.', ephemeral: true });
-            }
+            // No need to check for available chefs since orders will be claimed later
 
             // Create ticket channel in unclaimed category
             const guild = interaction.guild;
@@ -439,7 +469,7 @@ client.on('interactionCreate', async interaction => {
             });
 
             // Store ticket info with order details (unclaimed initially)
-            client.activeTickets.set(ticketChannel.id, {
+            const ticketData = {
                 userId: interaction.user.id,
                 chefId: null, // No chef assigned yet
                 orderType: 'Order',
@@ -449,7 +479,9 @@ client.on('interactionCreate', async interaction => {
                 createdAt: new Date(),
                 claimed: false,
                 completed: false
-            });
+            };
+            
+            client.activeTickets.set(ticketChannel.id, ticketData);
 
             // Create ticket embed
             const ticketEmbed = new EmbedBuilder()
@@ -488,6 +520,7 @@ client.on('interactionCreate', async interaction => {
                 );
 
             await ticketChannel.send({
+                content: `<@&1420971588253126697>`, // Ping chef role
                 embeds: [new EmbedBuilder()
                     .setDescription('🍳 **Chefs**: Click below to claim this order and move it to your workspace!')
                     .setColor('#FF6B35')],
