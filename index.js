@@ -179,10 +179,16 @@ client.on('messageCreate', async message => {
                     // Mark ticket as completed
                     ticket.completed = true;
                     
-                    // Rename channel to show completion
+                    // Move to completed category and rename
+                    const guild = message.guild;
+                    const completedCategory = guild.channels.cache.get('1427368396197990550');
                     const customer = await client.users.fetch(ticket.userId);
                     const newName = `completed-${customer.username}`;
-                    await message.channel.setName(newName);
+                    
+                    await message.channel.edit({
+                        name: newName,
+                        parent: completedCategory
+                    });
                     
                     // Create completion embed
                     const embed = new EmbedBuilder()
@@ -196,7 +202,7 @@ client.on('messageCreate', async message => {
                             { name: '🛍️ Customer', value: `<@${ticket.userId}>`, inline: true },
                             { name: '⏰ Completed', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
                         )
-                        .setFooter({ text: 'Thank you for your order! This channel will be deleted in 30 seconds.' })
+                        .setFooter({ text: 'Thank you for your order! Moved to completed category.' })
                         .setTimestamp();
                     
                     await message.channel.send({ embeds: [embed] });
@@ -223,15 +229,8 @@ client.on('messageCreate', async message => {
                         await client.utils.updateChefStatusEmbed();
                     }
                     
-                    // Delete the channel after 30 seconds
-                    setTimeout(async () => {
-                        try {
-                            client.activeTickets.delete(channelId);
-                            await message.channel.delete();
-                        } catch (error) {
-                            console.error('Error deleting channel:', error);
-                        }
-                    }, 30000);
+                    // Remove from active tickets
+                    client.activeTickets.delete(channelId);
                     
                 } catch (error) {
                     console.error('Error auto-completing order:', error);
@@ -413,20 +412,16 @@ client.on('interactionCreate', async interaction => {
             // Mark ticket as completed
             await client.utils.completeOrder(interaction.channel.id, interaction.user.id, ticket.userId, ticket.total);
             
-            // Hide the channel from customers after a short delay
-            await interaction.reply({ content: 'Order marked as complete! This channel will be hidden from customers in 5 seconds.' });
-            setTimeout(async () => {
-                try {
-                    // Hide channel from customers and general public
-                    await interaction.channel.permissionOverwrites.edit(interaction.guild.id, {
-                        ViewChannel: false
-                    });
-                    // Keep it visible for the chef for record keeping
-                    await interaction.channel.setName(`completed-${interaction.guild.members.cache.get(ticket.userId).user.username}`);
-                } catch (error) {
-                    console.error('Error hiding channel:', error);
-                }
-            }, 5000);
+            // Move to completed category and rename
+            await interaction.reply({ content: 'Order marked as complete! Moving to completed category...' });
+            
+            const completedCategory = interaction.guild.channels.cache.get('1427368396197990550');
+            const customer = await client.users.fetch(ticket.userId);
+            
+            await interaction.channel.edit({
+                name: `completed-${customer.username}`,
+                parent: completedCategory
+            });
         }
     } else if (interaction.isModalSubmit()) {
         // Handle modal form submissions
