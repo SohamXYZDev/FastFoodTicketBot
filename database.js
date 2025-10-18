@@ -55,15 +55,66 @@ const orderSchema = new mongoose.Schema({
     }
 });
 
+// Active Ticket Schema
+const activeTicketSchema = new mongoose.Schema({
+    channel_id: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    user_id: {
+        type: String,
+        required: true
+    },
+    chef_id: {
+        type: String,
+        default: null
+    },
+    order_type: {
+        type: String,
+        default: 'Order'
+    },
+    group_order_link: {
+        type: String,
+        required: true
+    },
+    total: {
+        type: String,
+        required: true
+    },
+    special_instructions: {
+        type: String,
+        default: 'None'
+    },
+    claimed: {
+        type: Boolean,
+        default: false
+    },
+    completed: {
+        type: Boolean,
+        default: false
+    },
+    created_at: {
+        type: Date,
+        default: Date.now
+    },
+    claimed_at: {
+        type: Date,
+        default: null
+    }
+});
+
 // Create Models
 const Chef = mongoose.model('Chef', chefSchema);
 const Order = mongoose.model('Order', orderSchema);
+const ActiveTicket = mongoose.model('ActiveTicket', activeTicketSchema);
 
 class Database {
     constructor() {
         this.mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/fastfood-ticket-bot';
         this.Chef = Chef;
         this.Order = Order;
+        this.ActiveTicket = ActiveTicket;
     }
 
     async initialize() {
@@ -211,6 +262,74 @@ class Database {
             return orders;
         } catch (error) {
             console.error('Error getting order history:', error);
+            throw error;
+        }
+    }
+
+    // Active Ticket Methods
+    async createActiveTicket(channelId, ticketData) {
+        try {
+            const ticket = new this.ActiveTicket({
+                channel_id: channelId,
+                user_id: ticketData.userId,
+                chef_id: ticketData.chefId,
+                order_type: ticketData.orderType,
+                group_order_link: ticketData.groupOrderLink,
+                total: ticketData.total,
+                special_instructions: ticketData.specialInstructions,
+                claimed: ticketData.claimed || false,
+                completed: ticketData.completed || false
+            });
+            await ticket.save();
+            console.log(`📝 Saved ticket to database: ${channelId}`);
+            return ticket;
+        } catch (error) {
+            console.error('Error creating active ticket:', error);
+            throw error;
+        }
+    }
+
+    async getActiveTicket(channelId) {
+        try {
+            const ticket = await this.ActiveTicket.findOne({ channel_id: channelId });
+            return ticket;
+        } catch (error) {
+            console.error('Error getting active ticket:', error);
+            throw error;
+        }
+    }
+
+    async updateActiveTicket(channelId, updates) {
+        try {
+            const ticket = await this.ActiveTicket.findOneAndUpdate(
+                { channel_id: channelId },
+                updates,
+                { new: true }
+            );
+            console.log(`✏️ Updated ticket in database: ${channelId}`);
+            return ticket;
+        } catch (error) {
+            console.error('Error updating active ticket:', error);
+            throw error;
+        }
+    }
+
+    async deleteActiveTicket(channelId) {
+        try {
+            await this.ActiveTicket.deleteOne({ channel_id: channelId });
+            console.log(`🗑️ Deleted ticket from database: ${channelId}`);
+        } catch (error) {
+            console.error('Error deleting active ticket:', error);
+            throw error;
+        }
+    }
+
+    async getAllActiveTickets() {
+        try {
+            const tickets = await this.ActiveTicket.find({});
+            return tickets;
+        } catch (error) {
+            console.error('Error getting all active tickets:', error);
             throw error;
         }
     }

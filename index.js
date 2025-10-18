@@ -151,6 +151,27 @@ client.once('ready', async () => {
     // Initialize database
     await db.initialize();
     
+    // Load active tickets from database into memory
+    const activeTickets = await db.getAllActiveTickets();
+    console.log(`📋 Loading ${activeTickets.length} active tickets from database...`);
+    
+    for (const ticket of activeTickets) {
+        client.activeTickets.set(ticket.channel_id, {
+            userId: ticket.user_id,
+            chefId: ticket.chef_id,
+            orderType: ticket.order_type,
+            groupOrderLink: ticket.group_order_link,
+            total: ticket.total,
+            specialInstructions: ticket.special_instructions,
+            createdAt: ticket.created_at,
+            claimed: ticket.claimed,
+            completed: ticket.completed,
+            claimedAt: ticket.claimed_at
+        });
+    }
+    
+    console.log(`✅ Loaded ${client.activeTickets.size} active tickets into memory`);
+    
     // Update chef status embed on startup
     await client.utils.updateChefStatusEmbed();
 });
@@ -229,8 +250,9 @@ client.on('messageCreate', async message => {
                         await client.utils.updateChefStatusEmbed();
                     }
                     
-                    // Remove from active tickets
+                    // Remove from active tickets in memory and database
                     client.activeTickets.delete(channelId);
+                    await db.deleteActiveTicket(channelId);
                     
                 } catch (error) {
                     console.error('Error auto-completing order:', error);
@@ -352,11 +374,17 @@ client.on('interactionCreate', async interaction => {
                 ]
             });
 
-            // Update ticket data
+            // Update ticket data in memory and database
             ticket.chefId = interaction.user.id;
             ticket.claimed = true;
             ticket.claimedAt = new Date();
             client.activeTickets.set(interaction.channel.id, ticket);
+            
+            await db.updateActiveTicket(interaction.channel.id, {
+                chef_id: interaction.user.id,
+                claimed: true,
+                claimed_at: new Date()
+            });
 
             // Create new embed showing claimed status
             const claimedEmbed = new EmbedBuilder()
@@ -411,6 +439,9 @@ client.on('interactionCreate', async interaction => {
 
             // Mark ticket as completed
             await client.utils.completeOrder(interaction.channel.id, interaction.user.id, ticket.userId, ticket.total);
+            
+            // Remove from database
+            await db.deleteActiveTicket(interaction.channel.id);
             
             // Move to completed category and rename
             await interaction.reply({ content: 'Order marked as complete! Moving to completed category...' });
@@ -476,7 +507,9 @@ client.on('interactionCreate', async interaction => {
                 completed: false
             };
             
+            // Save to both memory and database
             client.activeTickets.set(ticketChannel.id, ticketData);
+            await db.createActiveTicket(ticketChannel.id, ticketData);
 
             // Create ticket embed
             const ticketEmbed = new EmbedBuilder()
@@ -541,14 +574,17 @@ client.on('interactionCreate', async interaction => {
 });
 
 // Handle channel deletion (ticket closing)
-client.on('channelDelete', channel => {
+client.on('channelDelete', async channel => {
     if (client.activeTickets.has(channel.id)) {
         const ticket = client.activeTickets.get(channel.id);
         client.activeTickets.delete(channel.id);
         
+        // Delete from database
+        await db.deleteActiveTicket(channel.id);
+        
         // Check if chef should be set back to OPEN
         const chefTickets = Array.from(client.activeTickets.values()).filter(t => t.chefId === ticket.chefId);
-        if (chefTickets.length === 0) {
+        if (chefTickets.length === 0 && ticket.chefId) {
             // Set chef back to OPEN if no more tickets
             db.updateChefStatus(ticket.chefId, 'OPEN').then(() => {
                 client.utils.updateChefStatusEmbed();
