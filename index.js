@@ -211,7 +211,7 @@ client.on('messageCreate', async message => {
                     try {
                         const guild = message.guild;
                         const member = await guild.members.fetch(ticket.userId);
-                        const customerRole = guild.roles.cache.find(role => role.name.toLowerCase().includes('customer'));
+                        const customerRole = guild.roles.cache.get('1404345557022937130');
                         
                         if (customerRole && !member.roles.cache.has(customerRole.id)) {
                             await member.roles.add(customerRole);
@@ -523,7 +523,7 @@ client.on('interactionCreate', async interaction => {
             });
 
             // Assign customer role to user
-            const customerRole = interaction.guild.roles.cache.find(role => role.name === 'Customer');
+            const customerRole = interaction.guild.roles.cache.get('1404345557022937130');
             if (customerRole && !interaction.member.roles.cache.has(customerRole.id)) {
                 try {
                     await interaction.member.roles.add(customerRole);
