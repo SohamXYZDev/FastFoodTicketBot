@@ -249,6 +249,16 @@ class Database {
         }
     }
 
+    async deleteChef(userId) {
+        try {
+            const result = await this.Chef.deleteOne({ user_id: userId });
+            return result.deletedCount;
+        } catch (error) {
+            console.error('Error deleting chef:', error);
+            throw error;
+        }
+    }
+
     async getOrderHistory(chefId = null) {
         try {
             let query = {};
