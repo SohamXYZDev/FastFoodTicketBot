@@ -3,6 +3,7 @@ const { Client, Collection, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, B
 const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('./database.js');
+const { chromium } = require('playwright');
 
 // Create a new client instance
 const client = new Client({
@@ -47,10 +48,18 @@ client.chefStatuses = new Map();
 // Utility functions
 client.utils = {
     updateChefStatusEmbed: async () => {
-        const guild = client.guilds.cache.get(process.env.GUILD_ID);
-        const statusChannel = guild.channels.cache.get(process.env.STATUS_CHANNEL_ID);
-        
-        if (!statusChannel) return;
+        try {
+            const guild = client.guilds.cache.get(process.env.GUILD_ID);
+            if (!guild) {
+                console.log('⚠️ GUILD_ID not configured or bot not in guild - skipping chef status update');
+                return;
+            }
+            
+            const statusChannel = guild.channels.cache.get(process.env.STATUS_CHANNEL_ID);
+            if (!statusChannel) {
+                console.log('⚠️ STATUS_CHANNEL_ID not configured or channel not found - skipping chef status update');
+                return;
+            }
 
         // Get all chefs from database
         const chefs = await db.getAllChefs();
@@ -98,6 +107,9 @@ client.utils = {
         } else {
             await statusChannel.send({ embeds: [embed] });
         }
+        } catch (error) {
+            console.log('⚠️ Error updating chef status embed:', error.message);
+        }
     },
 
     getAvailableChef: async (orderType) => {
@@ -144,6 +156,166 @@ client.utils = {
     }
 };
 
+// UberEats Group Order Scraper Function
+async function scrapeUberEats(groupOrderUrl, statusMessage = null) {
+    const updateStatus = async (text) => {
+        if (statusMessage) {
+            try {
+                await statusMessage.edit(text);
+            } catch (error) {
+                console.error('Error updating status message:', error);
+            }
+        }
+    };
+
+    const resultData = {
+        draftOrderUuid: null,
+        storeName: null,
+        deliveryAddress: null,
+        subtotal: null,
+        items: []
+    };
+
+    try {
+        await updateStatus('🔍 Loading order details...');
+
+        const browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            viewport: { width: 1280, height: 720 },
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        });
+        const page = await context.newPage();
+
+        // Capture API responses
+        const capturedApiData = [];
+        page.on('response', async response => {
+            try {
+                const url = response.url();
+                if (url.includes('getDraftOrderByUuidV2') || url.includes('createGroupOrderDraftV2')) {
+                    const data = await response.json();
+                    capturedApiData.push(data);
+                }
+            } catch (error) {
+                // Ignore errors from parsing responses
+            }
+        });
+
+        // Navigate to the page
+        await page.goto(groupOrderUrl, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(3000);
+
+        // Extract Store and Delivery Address
+        await updateStatus('📍 Getting restaurant info...');
+        const divs = await page.locator('div.bo.bp.co.dy').all();
+
+        for (let i = 0; i < divs.length; i++) {
+            const text = (await divs[i].innerText()).trim();
+            if (text) {
+                if (i === 0 && !resultData.storeName) {
+                    const lines = text.split('\n');
+                    resultData.storeName = lines[0] || text;
+                } else if (i === 1 && !resultData.deliveryAddress) {
+                    const lines = text.split('\n');
+                    resultData.deliveryAddress = lines[0] || text;
+                }
+            }
+        }
+
+        // Extract draftOrderUuid from URL
+        if (groupOrderUrl.includes('/group-orders/')) {
+            const uuid = groupOrderUrl.split('/group-orders/')[1].split('/')[0];
+            resultData.draftOrderUuid = uuid;
+        }
+
+        // Join as guest
+        await updateStatus('🔐 Accessing order...');
+        try {
+            await page.waitForSelector("input[type='text']", { timeout: 5000 });
+            await page.fill("input[type='text']", "Discord Bot");
+            await page.waitForTimeout(500);
+        } catch (error) {
+            // Input might not be required
+        }
+
+        // Click "Join order" button
+        try {
+            const joinButton = page.getByRole('button', { name: 'Join order' });
+            if (await joinButton.count() > 0) {
+                await joinButton.click();
+                await page.waitForTimeout(3000);
+            }
+        } catch (error) {
+            // Button might not exist
+        }
+
+        // Click "View Order" button
+        await updateStatus('🛒 Loading cart items...');
+        try {
+            const elements = await page.locator('a, button').all();
+            for (const element of elements) {
+                const text = await element.innerText();
+                if (text.toLowerCase().includes('view order')) {
+                    await element.click();
+                    await page.waitForTimeout(5000);
+                    break;
+                }
+            }
+        } catch (error) {
+            // Might not need to click
+        }
+
+        // Parse API data for cart items
+        if (capturedApiData.length > 0) {
+            for (const apiResponse of capturedApiData) {
+                const data = apiResponse.data || {};
+                const draftOrder = data.draftOrder || {};
+
+                if (draftOrder) {
+                    const shoppingCart = draftOrder.shoppingCart || {};
+
+                    if (shoppingCart) {
+                        const items = shoppingCart.items || [];
+
+                        if (items.length > 0 && resultData.items.length === 0) {
+                            await updateStatus(`✅ Found ${items.length} item${items.length !== 1 ? 's' : ''}`);
+                            let total = 0;
+
+                            for (const item of items) {
+                                const itemName = item.title || 'Unknown Item';
+                                const itemQty = item.quantity || 1;
+                                const itemPrice = item.price || 0;
+
+                                // Convert price from cents to dollars
+                                const itemPriceDollars = itemPrice / 100;
+                                total += itemPriceDollars * itemQty;
+
+                                resultData.items.push({
+                                    name: itemName,
+                                    qty: itemQty,
+                                    price: itemPriceDollars
+                                });
+                            }
+
+                            resultData.subtotal = Math.round(total * 100) / 100;
+                            await updateStatus(`💰 Total: $${resultData.subtotal.toFixed(2)}`);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        await updateStatus('✨ Preparing results...');
+        await browser.close();
+
+        return resultData;
+    } catch (error) {
+        await updateStatus(`❌ Error: ${error.message}`);
+        console.error('Error scraping UberEats:', error);
+        return null;
+    }
+}
+
 // When the client is ready, run this code
 client.once('ready', async () => {
     console.log(`Ready! Logged in as ${client.user.tag}`);
@@ -172,15 +344,97 @@ client.once('ready', async () => {
     
     console.log(`✅ Loaded ${client.activeTickets.size} active tickets into memory`);
     
-    // Update chef status embed on startup
-    await client.utils.updateChefStatusEmbed();
+    // Update chef status embed on startup (only if configured)
+    try {
+        await client.utils.updateChefStatusEmbed();
+    } catch (error) {
+        console.log('⚠️ Could not update chef status embed:', error.message);
+    }
 });
 
 // Handle messages for auto-completion and customer role assignment
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     
-    // Check if message contains UberEats order link
+    // Check if message contains UberEats group order link (server-wide)
+    const uberEatsPattern = /https:\/\/eats\.uber\.com\/group-orders\/[a-f0-9-]+\/join/i;
+    const match = message.content.match(uberEatsPattern);
+    
+    if (match) {
+        const url = match[0];
+        
+        // Send initial "processing" message
+        const processingMsg = await message.channel.send('🔍 Starting scrape...');
+        
+        try {
+            // Scrape the order
+            const data = await scrapeUberEats(url, processingMsg);
+            
+            if (data && data.items && data.items.length > 0) {
+                // Create embed with order details
+                const embed = new EmbedBuilder()
+                    .setTitle('🍔 Uber Eats Group Order')
+                    .setDescription(`**${data.storeName || 'Unknown Store'}**`)
+                    .setColor('#00FF00'); // Green color
+                
+                // Add delivery address
+                if (data.deliveryAddress) {
+                    embed.addFields({
+                        name: '📍 Delivery Address',
+                        value: data.deliveryAddress,
+                        inline: false
+                    });
+                }
+                
+                // Add items
+                if (data.items) {
+                    let itemsText = '';
+                    for (const item of data.items) {
+                        itemsText += `**${item.name}**\n`;
+                        itemsText += `Quantity: ${item.qty} × $${item.price.toFixed(2)}\n\n`;
+                    }
+                    
+                    embed.addFields({
+                        name: '🛒 Items',
+                        value: itemsText,
+                        inline: false
+                    });
+                }
+                
+                // Add subtotal
+                if (data.subtotal) {
+                    embed.addFields({
+                        name: '💰 Subtotal',
+                        value: `**$${data.subtotal.toFixed(2)}**`,
+                        inline: false
+                    });
+                }
+                
+                // Add order UUID
+                if (data.draftOrderUuid) {
+                    embed.setFooter({ text: `Order ID: ${data.draftOrderUuid}` });
+                }
+                
+                // Delete processing message and send embed
+                await processingMsg.delete();
+                await message.channel.send({ embeds: [embed] });
+                
+            } else if (data && data.storeName) {
+                // Order exists but has no items yet
+                await processingMsg.edit(`⚠️ **Order found but cart is empty!**\n` +
+                    `🏪 Store: ${data.storeName}\n` +
+                    `📍 Delivery: ${data.deliveryAddress || 'N/A'}\n\n` +
+                    `ℹ️ This order has no items added yet.`);
+            } else {
+                await processingMsg.edit('❌ Could not extract order data. The link might be invalid or expired.');
+            }
+        } catch (error) {
+            console.error('Error processing UberEats link:', error);
+            await processingMsg.edit(`❌ Error scraping order: ${error.message}`);
+        }
+    }
+    
+    // Check if message contains UberEats order link (existing ticket completion logic)
     if (message.content.includes('https://ubereats.com/orders/')) {
         const channelId = message.channel.id;
         
