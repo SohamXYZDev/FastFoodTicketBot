@@ -436,14 +436,18 @@ client.on('messageCreate', async message => {
     
     // Check if message contains UberEats order link (existing ticket completion logic)
     if (message.content.includes('https://ubereats.com/orders/')) {
+        console.log('🔍 Detected UberEats order completion link');
         const channelId = message.channel.id;
         
         // Check if this is a ticket channel
         if (client.activeTickets.has(channelId)) {
+            console.log('✅ Channel is an active ticket');
             const ticket = client.activeTickets.get(channelId);
+            console.log(`👤 Message author: ${message.author.id}, Chef: ${ticket.chefId}, Claimed: ${ticket.claimed}, Completed: ${ticket.completed}`);
             
             // Check if sender is the assigned chef and ticket is claimed
             if (ticket.chefId === message.author.id && ticket.claimed && !ticket.completed) {
+                console.log('✅ All conditions met - auto-completing order');
                 try {
                     // Get payment amount from environment
                     const amount = parseFloat(process.env.UBEREATS_AMOUNT) || 4.50;
@@ -509,9 +513,17 @@ client.on('messageCreate', async message => {
                     await db.deleteActiveTicket(channelId);
                     
                 } catch (error) {
-                    console.error('Error auto-completing order:', error);
+                    console.error('❌ Error auto-completing order:', error);
                 }
+            } else {
+                console.log('❌ Conditions not met for autocomplete:', {
+                    isChef: ticket.chefId === message.author.id,
+                    isClaimed: ticket.claimed,
+                    notCompleted: !ticket.completed
+                });
             }
+        } else {
+            console.log('❌ Channel is not an active ticket');
         }
     }
 });
