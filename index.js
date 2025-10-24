@@ -667,20 +667,25 @@ client.on('interactionCreate', async interaction => {
                 )
                 .setFooter({ text: 'Send a UberEats link when order is complete!' });
 
-            // Complete order button for the assigned chef
-            const completeButton = new ActionRowBuilder()
+            // Complete order and close ticket buttons for the assigned chef
+            const actionButtons = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('complete_order')
                         .setLabel('Complete Order')
                         .setStyle(ButtonStyle.Success)
-                        .setEmoji('✅')
+                        .setEmoji('✅'),
+                    new ButtonBuilder()
+                        .setCustomId('close_ticket')
+                        .setLabel('Close Ticket')
+                        .setStyle(ButtonStyle.Danger)
+                        .setEmoji('🔒')
                 );
 
             await interaction.update({
                 content: `<@${ticket.userId}> <@${interaction.user.id}>`,
                 embeds: [claimedEmbed],
-                components: [completeButton]
+                components: [actionButtons]
             });
 
             // Update chef status to busy if they have multiple tickets
@@ -719,6 +724,52 @@ client.on('interactionCreate', async interaction => {
                 name: `completed-${customer.username}`,
                 parent: completedCategory
             });
+        } else if (interaction.customId === 'close_ticket') {
+            // Check if this is a ticket channel
+            if (!client.activeTickets.has(interaction.channel.id)) {
+                return interaction.reply({ content: 'This is not an active ticket channel!', ephemeral: true });
+            }
+
+            const ticket = client.activeTickets.get(interaction.channel.id);
+            
+            // Check if user is the assigned chef or admin
+            const isChef = interaction.user.id === ticket.chefId;
+            const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+            
+            if (!isChef && !isAdmin) {
+                return interaction.reply({ content: 'Only the assigned chef or an administrator can close this ticket!', ephemeral: true });
+            }
+
+            // Remove from active tickets
+            client.activeTickets.delete(interaction.channel.id);
+            await db.deleteActiveTicket(interaction.channel.id);
+
+            // Check if chef should be set back to OPEN
+            if (ticket.chefId) {
+                const chefTickets = Array.from(client.activeTickets.values()).filter(t => t.chefId === ticket.chefId);
+                if (chefTickets.length === 0) {
+                    await db.updateChefStatus(ticket.chefId, 'OPEN');
+                    await client.utils.updateChefStatusEmbed();
+                }
+            }
+
+            // Send closing message
+            const closeEmbed = new EmbedBuilder()
+                .setTitle('🔒 Ticket Closed')
+                .setDescription(`This ticket has been closed by <@${interaction.user.id}>`)
+                .setColor('#FF6B35')
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [closeEmbed] });
+
+            // Delete channel after 5 seconds
+            setTimeout(async () => {
+                try {
+                    await interaction.channel.delete('Ticket closed');
+                } catch (error) {
+                    console.error('Error deleting ticket channel:', error);
+                }
+            }, 5000);
         }
     } else if (interaction.isModalSubmit()) {
         // Handle modal form submissions
