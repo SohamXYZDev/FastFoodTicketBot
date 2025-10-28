@@ -618,8 +618,19 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: 'You must be available to claim orders! Use `/chef status available` first.', ephemeral: true });
             }
 
+            // Check if this is first click or confirmation
+            if (!ticket.claimConfirmation || ticket.claimConfirmation !== interaction.user.id) {
+                // First click - ask for confirmation
+                ticket.claimConfirmation = interaction.user.id;
+                client.activeTickets.set(interaction.channel.id, ticket);
+                return interaction.reply({ content: '⚠️ Press "Claim Order" 1 more time to confirm', ephemeral: true });
+            }
+
+            // Second click - proceed with claim
+            delete ticket.claimConfirmation;
+
             // Move channel to regular ticket category and assign chef
-            const ticketCategory = interaction.guild.channels.cache.get(process.env.TICKET_CATEGORY_ID);
+            const ticketCategory = interaction.guild.channels.cache.get('1432763201409253411');
             
             await interaction.channel.edit({
                 name: `ticket-${interaction.guild.members.cache.get(ticket.userId).user.username}`,
