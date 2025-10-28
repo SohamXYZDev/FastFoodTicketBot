@@ -356,6 +356,30 @@ client.once('ready', async () => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     
+    // Check if message is in an unclaimed ticket channel
+    if (client.activeTickets.has(message.channel.id)) {
+        const ticket = client.activeTickets.get(message.channel.id);
+        
+        // If ticket is unclaimed and message is from a chef (not the customer)
+        if (!ticket.claimed && message.author.id !== ticket.userId) {
+            const chefRole = message.guild.roles.cache.get(process.env.CHEF_ROLE_ID);
+            
+            // Check if author is a chef
+            if (chefRole && message.member.roles.cache.has(chefRole.id)) {
+                try {
+                    await message.delete();
+                    
+                    // Send ephemeral-style message that deletes itself
+                    const warningMsg = await message.channel.send(`<@${message.author.id}> ⚠️ You must claim this order before chatting!`);
+                    setTimeout(() => warningMsg.delete().catch(() => {}), 3000);
+                } catch (error) {
+                    console.error('Error deleting chef message in unclaimed ticket:', error);
+                }
+                return;
+            }
+        }
+    }
+    
     // Check if message contains UberEats group order link (server-wide)
     const uberEatsPattern = /https:\/\/eats\.uber\.com\/group-orders\/[a-f0-9-]+\/join/i;
     const match = message.content.match(uberEatsPattern);
@@ -620,13 +644,28 @@ client.on('interactionCreate', async interaction => {
 
             // Check if this is first click or confirmation
             if (!ticket.claimConfirmation || ticket.claimConfirmation !== interaction.user.id) {
-                // First click - ask for confirmation
+                // First click - ask for confirmation with a button
                 ticket.claimConfirmation = interaction.user.id;
                 client.activeTickets.set(interaction.channel.id, ticket);
-                return interaction.reply({ content: '⚠️ Press "Claim Order" 1 more time to confirm', ephemeral: true });
+                
+                const confirmButton = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('confirm_claim')
+                            .setLabel('Confirm Claim')
+                            .setStyle(ButtonStyle.Success)
+                            .setEmoji('✅')
+                    );
+                
+                return interaction.reply({ 
+                    content: '⚠️ **Click "Confirm Claim" below to confirm claiming this order**', 
+                    components: [confirmButton],
+                    ephemeral: true 
+                });
             }
 
-            // Second click - proceed with claim
+            // This shouldn't be reached anymore since we use confirm_claim button
+            // But keeping for backward compatibility
             delete ticket.claimConfirmation;
 
             // Move channel to regular ticket category and assign chef
@@ -694,6 +733,111 @@ client.on('interactionCreate', async interaction => {
                 );
 
             await interaction.update({
+                content: `<@${ticket.userId}> <@${interaction.user.id}>`,
+                embeds: [claimedEmbed],
+                components: [actionButtons]
+            });
+
+            // Update chef status to busy if they have multiple tickets
+            const chefTickets = Array.from(client.activeTickets.values()).filter(t => t.chefId === interaction.user.id && t.claimed);
+            if (chefTickets.length > 1) {
+                await db.updateChefStatus(interaction.user.id, 'BUSY');
+                await client.utils.updateChefStatusEmbed();
+            }
+
+        } else if (interaction.customId === 'confirm_claim') {
+            // Handle the confirmation claim button from ephemeral message
+            const channelId = interaction.message.channelId;
+            
+            if (!client.activeTickets.has(channelId)) {
+                return interaction.update({ content: '❌ This ticket is no longer active!', components: [] });
+            }
+
+            const ticket = client.activeTickets.get(channelId);
+            
+            // Verify the confirmation is from the chef who initiated the claim
+            if (!ticket.claimConfirmation || ticket.claimConfirmation !== interaction.user.id) {
+                return interaction.update({ content: '❌ Claim confirmation expired. Please click "Claim Order" again.', components: [] });
+            }
+
+            // Check if order is already claimed by someone else
+            if (ticket.claimed) {
+                delete ticket.claimConfirmation;
+                client.activeTickets.set(channelId, ticket);
+                return interaction.update({ content: '❌ This order has already been claimed by someone else!', components: [] });
+            }
+
+            // Proceed with claim
+            delete ticket.claimConfirmation;
+            
+            const ticketChannel = interaction.guild.channels.cache.get(channelId);
+            const ticketCategory = interaction.guild.channels.cache.get('1432763201409253411');
+            
+            await ticketChannel.edit({
+                name: `ticket-${interaction.guild.members.cache.get(ticket.userId).user.username}`,
+                parent: ticketCategory,
+                permissionOverwrites: [
+                    {
+                        id: interaction.guild.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                    },
+                    {
+                        id: ticket.userId,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    },
+                    {
+                        id: interaction.user.id,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    },
+                ]
+            });
+
+            // Update ticket data
+            ticket.chefId = interaction.user.id;
+            ticket.claimed = true;
+            ticket.claimedAt = new Date();
+            client.activeTickets.set(channelId, ticket);
+            
+            await db.updateActiveTicket(channelId, {
+                chef_id: interaction.user.id,
+                claimed: true,
+                claimed_at: new Date()
+            });
+
+            // Create claimed embed
+            const claimedEmbed = new EmbedBuilder()
+                .setTitle(`🎫 Order Claimed!`)
+                .setDescription(`<@${interaction.user.id}> has claimed this order for <@${ticket.userId}>!`)
+                .setColor('#00ADEF')
+                .setThumbnail('https://i.ibb.co/fYkrgwKy/Chat-GPT-Image-Oct-13-2025-12-09-59-PM.png')
+                .addFields(
+                    { name: '👨‍🍳 Assigned Chef', value: `<@${interaction.user.id}>`, inline: true },
+                    { name: '💰 Total Amount', value: ticket.total, inline: true },
+                    { name: '⏰ Claimed', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+                    { name: '🔗 Group Order Link', value: ticket.groupOrderLink, inline: false },
+                    { name: '📝 Special Instructions', value: ticket.specialInstructions, inline: false }
+                )
+                .setFooter({ text: 'Send a UberEats link when order is complete!' });
+
+            const actionButtons = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('complete_order')
+                        .setLabel('Complete Order')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('✅'),
+                    new ButtonBuilder()
+                        .setCustomId('close_ticket')
+                        .setLabel('Close Ticket')
+                        .setStyle(ButtonStyle.Danger)
+                        .setEmoji('🔒')
+                );
+
+            // Update the ephemeral message
+            await interaction.update({ content: '✅ **Order claimed successfully!**', components: [] });
+
+            // Send the claimed message in the ticket channel
+            await ticketChannel.send({
                 content: `<@${ticket.userId}> <@${interaction.user.id}>`,
                 embeds: [claimedEmbed],
                 components: [actionButtons]
@@ -777,6 +921,48 @@ client.on('interactionCreate', async interaction => {
             setTimeout(async () => {
                 try {
                     await interaction.channel.delete('Ticket closed');
+                } catch (error) {
+                    console.error('Error deleting ticket channel:', error);
+                }
+            }, 5000);
+        } else if (interaction.customId === 'cancel_order') {
+            // Check if this is a ticket channel
+            if (!client.activeTickets.has(interaction.channel.id)) {
+                return interaction.reply({ content: 'This is not an active ticket channel!', ephemeral: true });
+            }
+
+            const ticket = client.activeTickets.get(interaction.channel.id);
+            
+            // Check if user is the customer who created the ticket or admin
+            const isCustomer = interaction.user.id === ticket.userId;
+            const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+            
+            if (!isCustomer && !isAdmin) {
+                return interaction.reply({ content: 'Only the customer who created this order or an administrator can cancel it!', ephemeral: true });
+            }
+
+            // Check if order is already claimed
+            if (ticket.claimed) {
+                return interaction.reply({ content: 'This order has already been claimed and cannot be cancelled! Please contact the assigned chef.', ephemeral: true });
+            }
+
+            // Remove from active tickets
+            client.activeTickets.delete(interaction.channel.id);
+            await db.deleteActiveTicket(interaction.channel.id);
+
+            // Send cancellation message
+            const cancelEmbed = new EmbedBuilder()
+                .setTitle('❌ Order Cancelled')
+                .setDescription(`This order has been cancelled by <@${interaction.user.id}>`)
+                .setColor('#FF6B35')
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [cancelEmbed] });
+
+            // Delete channel after 5 seconds
+            setTimeout(async () => {
+                try {
+                    await interaction.channel.delete('Order cancelled');
                 } catch (error) {
                     console.error('Error deleting ticket channel:', error);
                 }
@@ -872,7 +1058,12 @@ client.on('interactionCreate', async interaction => {
                         .setCustomId('claim_order')
                         .setLabel('Claim Order')
                         .setStyle(ButtonStyle.Primary)
-                        .setEmoji('🙋‍♂️')
+                        .setEmoji('🙋‍♂️'),
+                    new ButtonBuilder()
+                        .setCustomId('cancel_order')
+                        .setLabel('Cancel Order')
+                        .setStyle(ButtonStyle.Danger)
+                        .setEmoji('❌')
                 );
 
             await ticketChannel.send({
